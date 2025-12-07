@@ -8,6 +8,10 @@ Electric Wafer Maker Controller (Oblátkovač) is an Arduino/ESP-based controlle
 - `d1_mini` — WeMos D1 mini (ESP8266)
 - `esp32_c3` — ESP32 C3 (ESP32-C3)
 
+</br></br>
+<img src="docs/oled.jpg" width="400">
+</br>
+
 
 ## Bundled libraries
 
