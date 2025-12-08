@@ -19,8 +19,11 @@ const int max_time = 90;
 
 // ###############################  Definitions  ###############################
 
-U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE, i2c_scl_pin, i2c_sda_pin); // U8G2_SH1106_128X64_NONAME_F_HW_I2C(rotation, [reset [, clk, data]])
-thermistor therm1(thermistor_pin,1);  // Analog Pin which is connected to the 3950 temperature sensor, and 0 represents TEMP_SENSOR_0 (see configuration.h for more information).
+// Use paged API (no full framebuffer) to save RAM on AVR
+// Use the paged SH1106 constructor (mode 1) for HW I2C
+U8G2_SH1106_128X64_NONAME_1_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE, i2c_scl_pin, i2c_sda_pin);
+// paged (no full framebuffer)
+thermistor therm1(thermistor_pin, 1); // Analog Pin which is connected to the 3950 temperature sensor
 RotaryEncoder encoder(encoder_clk_pin, encoder_dt_pin, RotaryEncoder::LatchMode::FOUR3);
 RotaryEncoder encoder2(encoder_clk_pin, encoder_dt_pin, RotaryEncoder::LatchMode::FOUR3);
 
@@ -34,7 +37,7 @@ unsigned long previousTime = 0;
 const unsigned long timeout = 500; //1000; // 1s in ms, update interval
 boolean tick = 0;
 boolean target_reached_once = 0; // Track whether we've already signaled reaching the target temperature
-boolean buzzer_active = 0; // Buzzer one-shot active flag and expiry time (ms)
+boolean buzzer_active = 0;       // Buzzer one-shot active flag and expiry time (ms)
 unsigned long buzzer_off_time = 0;
 int menu_positon = 1;
 int lastPos1 = -1;
@@ -42,29 +45,34 @@ int lastPos2 = -1;
 
 // ################################  Functions  ################################
 
-static void buttonHandler(uint8_t btnId, uint8_t btnState) {
+static void buttonHandler(uint8_t btnId, uint8_t btnState)
+{
   if (btnState == BTN_PRESSED) {
-
-    #if DEBUG
-        Serial.println("Pushed button");
-    #endif
-
     menu_positon++;
-    if (menu_positon > 3){
+    if (menu_positon > 3) {
       menu_positon = 1;
     }
 
-    #if DEBUG
-      Serial.print("Menu: ");
-      Serial.println(menu_positon);
-    #endif
+#if DEBUG
+    Serial.print(F("Menu: "));
+    Serial.println(menu_positon);
+#endif
   }
 }
+
 static Button myButton(0, buttonHandler);
 
 // ##################################  Setup  ##################################
-void setup(void) {
+void setup(void)
+{
+#if DEBUG
+  Serial.begin(9600);
+  Serial.println(F("Booting up..."));
+  Serial.println("");
+#endif
+
   u8g2.begin(); // initialize the display
+
   // Initialize I2C/Wire with platform-specific pins when available.
 #if defined(ESP8266) || defined(ESP32) || defined(CONFIG_IDF_TARGET_ESP32C3) || defined(ESP32_C3)
   Wire.begin(i2c_sda_pin, i2c_scl_pin);
@@ -75,53 +83,45 @@ void setup(void) {
   pinMode(relay_pin, OUTPUT);
   pinMode(buzzer_pin, OUTPUT);
   pinMode(encoder_sw_pin, INPUT);
-  //pinMode(reed_contact_pin, INPUT_PULLUP);
+  // pinMode(reed_contact_pin, INPUT_PULLUP);
   pinMode(reed_contact_pin, INPUT);
-
-  #if DEBUG
-    Serial.begin(9600);
-    Serial.println("Basic Encoder Test:");
-  #endif
 
   encoder.setPosition(default_temp);
   encoder2.setPosition(default_time);
 }
 
-static void pollButtons() {
- myButton.update(digitalRead(encoder_sw_pin));
+static void pollButtons()
+{
+  myButton.update(digitalRead(encoder_sw_pin));
 }
 
 // ##################################  Loop  ##################################
-void loop(void) {
-  if (menu_positon == 2){
-  encoder.tick();
+void loop(void)
+{
+  if (menu_positon == 2) {
+    encoder.tick();
   }
-  if (menu_positon == 3){
-  encoder2.tick();
+
+  if (menu_positon == 3) {
+    encoder2.tick();
   }
+
   pollButtons(); // Poll your buttons every loop.
 
-
   int reed_contact = digitalRead(reed_contact_pin);
-
-  #if DEBUG
-    Serial.print("Reed contact: ");
-    Serial.println(reed_contact);
-  #endif
 
   // Timer for update interval (1 second)
   if (millis() >= (previousTime)) {
     previousTime = previousTime + timeout;
-    tick=1;
-  }else{
-    tick=0;
+    tick = 1;
+  } else {
+    tick = 0;
   }
 
   if (reed_contact == LOW) {
     time_countdown = set_time;
-  }else{
-
-    if (time_countdown > 0 and target_reached_once == 1){
+  } else {
+    if (time_countdown > 0 && target_reached_once == 1) {
       unsigned long currentTime = millis();
       static unsigned long lastCountdownTime = 0;
       if (currentTime - lastCountdownTime >= 1000) { // Decrease every second
@@ -130,7 +130,6 @@ void loop(void) {
       }
     }
   }
-
 
   // Expire one-shot buzzer if time elapsed
   if (buzzer_active && (millis() >= buzzer_off_time)) {
@@ -148,137 +147,150 @@ void loop(void) {
 
   // If it's time to update
   if (tick) {
+    // read temperature
+    temp = therm1.analog2temp();
 
-  // read temperature
- temp = therm1.analog2temp();
-  
+    // Draw UI using paged API to avoid allocating a full framebuffer
+    u8g2.firstPage();
+    do {
+      // Icony
+      // Thermometer
+      u8g2.setFont(u8g2_font_streamline_weather_t);
+      u8g2.drawGlyph(4, 28, 0x36);
 
-
-  // clear the internal memory and set font
-  u8g2.clearBuffer();
-
-  // Icony
-  // Thermometer
-  u8g2.setFont(u8g2_font_streamline_weather_t);
-  u8g2.drawGlyph(4, 28, 0x36);
-  
-  // Clock
-  u8g2.setFont(u8g2_font_streamline_interface_essential_circle_triangle_t);
-  u8g2.drawGlyph(0, 60, 0x36);
-
-  // Blinking heater icon when ON
-  if (heat_on == 1){
-    if (((previousTime/1000) % 2) == 0){
+      // Clock
       u8g2.setFont(u8g2_font_streamline_interface_essential_circle_triangle_t);
-      u8g2.drawGlyph(105, 40, 0x33);
-    }
+      u8g2.drawGlyph(0, 60, 0x36);
+
+      // Blinking heater icon when ON
+      if (heat_on == 1) {
+        if (((previousTime / 1000) % 2) == 0) {
+          u8g2.setFont(u8g2_font_streamline_interface_essential_circle_triangle_t);
+          u8g2.drawGlyph(105, 40, 0x33);
+        }
+      }
+
+      // Font text
+      u8g2.setFont(u8g2_font_neuecraft_tr);
+
+      // print temperature
+      u8g2.setCursor(30, 15);
+      u8g2.print(F("Temp: "));
+      u8g2.print(temp, 1);
+      u8g2.print(F(" °C"));
+
+      // Turn heater OFF
+      if (temp >= (target_temp + hysteresis)) {
+        digitalWrite(relay_pin, LOW);
+        heat_on = 0;
+      }
+
+      // Turn heater ON
+      if (temp <= (target_temp - hysteresis)) {
+        digitalWrite(relay_pin, HIGH);
+        heat_on = 1;
+      }
+
+      // If target temperature is reached for the first time, beep buzzer for 1 second
+      if (!target_reached_once && (temp >= target_temp)) {
+        target_reached_once = 1;
+        buzzer_active = 1;
+        buzzer_off_time = millis() + 1000; // 1 second
+        digitalWrite(buzzer_pin, HIGH);     // immediate start of beep
+      }
+
+      u8g2.setCursor(30, 30);
+      u8g2.print(F("Set: "));
+
+      if (menu_positon == 2) {
+        if (((previousTime / 500) % 2) == 0) {
+          u8g2.print(target_temp);
+          u8g2.print(F(" °C"));
+        }
+      } else {
+        u8g2.print(target_temp);
+        u8g2.print(F(" °C"));
+      }
+
+      u8g2.setCursor(30, 55);
+      u8g2.print(F("Time: "));
+
+      if (menu_positon == 3) {
+        if (((previousTime / 500) % 2) == 0) {
+          u8g2.print(set_time);
+          u8g2.print(F(" s"));
+        } else {
+          u8g2.print(F("    "));
+        }
+      } else {
+        u8g2.print(time_countdown);
+        u8g2.print(F(" s"));
+      }
+    } while (u8g2.nextPage());
   }
 
-  // Font text
-  u8g2.setFont(u8g2_font_neuecraft_tr);
-
-  // print temperature
-  u8g2.setCursor(30, 15);
-  u8g2.print("Temp: ");
-  u8g2.print(temp,1);
-  u8g2.print(" °C");
-
-  // Turn heater OFF
-  if (temp >= (target_temp + hysteresis)) {
-    digitalWrite(relay_pin, LOW);
-    heat_on = 0;
-  }
-
-  // Turn heater ON
-  if (temp <= (target_temp - hysteresis)) {
-    digitalWrite(relay_pin, HIGH);
-    heat_on = 1;
-  }
-
-  // If target temperature is reached for the first time, beep buzzer for 1 second
-  if (!target_reached_once && (temp >= target_temp)) {
-    target_reached_once = 1;
-    buzzer_active = 1;
-    buzzer_off_time = millis() + 1000; // 1 second
-    digitalWrite(buzzer_pin, HIGH); // immediate start of beep
-  }
-
-  u8g2.setCursor(30, 30);
-  u8g2.print("Set: ");
-
-if (menu_positon == 2){
-  if (((previousTime/500) % 2) == 0){
-    u8g2.print(target_temp );
-    u8g2.print(" °C");
-  }
-}else{
-    u8g2.print(target_temp );
-    u8g2.print(" °C");
-}
-
-
-  u8g2.setCursor(30, 55);
-  u8g2.print("Time: ");
-
-if (menu_positon == 3){
-  if (((previousTime/500) % 2) == 0){
-    u8g2.print(set_time);
-  }else{
-    u8g2.print("    ");
-  }
-  }else{
-    u8g2.print(set_time);
-  }
-  u8g2.print("/");
-  u8g2.print(time_countdown);
-  u8g2.print(" s");
-
-  // send buffer to display
-  u8g2.sendBuffer();
-    }
-// end of tick
-
-
-// Rotary Encoder menu - temperature setting
-if (menu_positon == 2){
+  // Rotary Encoder menu - temperature setting
+  if (menu_positon == 2) {
     // get the current physical position and calc the logical position
     int newPos = encoder.getPosition() * rotary_steps;
 
     if (newPos < min_temp) {
       encoder.setPosition(min_temp / rotary_steps);
       newPos = min_temp;
-
     } else if (newPos > max_temp) {
       encoder.setPosition(max_temp / rotary_steps);
       newPos = max_temp;
-    } // if
+    }
 
     if (lastPos1 != newPos) {
       lastPos1 = newPos;
       target_temp = lastPos1;
-    } // if
-}
+    }
+  }
 
-
-// Rotary Encoder menu - time setting
-if (menu_positon == 3){
+  // Rotary Encoder menu - time setting
+  if (menu_positon == 3) {
     // get the current physical position and calc the logical position
     int newPos2 = encoder2.getPosition() * rotary_steps;
 
     if (newPos2 < min_time) {
       encoder2.setPosition(min_time / rotary_steps);
       newPos2 = min_time;
-
     } else if (newPos2 > max_time) {
       encoder2.setPosition(max_time / rotary_steps);
       newPos2 = max_time;
-    } // if
+    }
 
     if (lastPos2 != newPos2) {
       lastPos2 = newPos2;
       set_time = lastPos2;
-    } // if
-}
+    }
+  }
 
+  // Periodic global debug message every 5 seconds
+#if DEBUG
+  static unsigned long lastDebugTime = 0;
+  const unsigned long debugInterval = 5000UL; // ms
+  if (millis() - lastDebugTime >= debugInterval) {
+    lastDebugTime = millis();
+    Serial.println(F("=========== DEBUG ==========="));
+    Serial.print(F("Curent Temp: "));
+    Serial.println(temp, 1);
+    Serial.print(F("Set Temp: "));
+    Serial.println(target_temp);
+    Serial.print(F("Heater: "));
+    Serial.println(heat_on);
+    Serial.print(F("Time Set: "));
+    Serial.println(set_time);
+    Serial.print(F("Time Left: "));
+    Serial.println(time_countdown);
+    Serial.print(F("Reed contact: "));
+    Serial.println(reed_contact);
+    Serial.print(F("Menu: "));
+    Serial.println(menu_positon);
+    Serial.println(F("==========================="));
+    Serial.println("");
+  }
+#endif
 }
 // End
