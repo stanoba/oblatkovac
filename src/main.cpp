@@ -1,3 +1,11 @@
+/*******************************************************************************
+ * oblatkovac
+ * GitHub: https://github.com/stanoba/oblatkovac
+ * Date: 2025-12
+ * Description: Main firmware — temperature sensing, heater control, UI,
+ *              rotary encoders and buzzer logic.
+ ******************************************************************************/
+
 #include <Arduino.h>
 #include <U8g2lib.h>
 #include <Wire.h>
@@ -22,10 +30,9 @@ const int max_time = 90;
 // Use paged API (no full framebuffer) to save RAM on AVR
 // Use the paged SH1106 constructor (mode 1) for HW I2C
 U8G2_SH1106_128X64_NONAME_1_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE, i2c_scl_pin, i2c_sda_pin);
-// paged (no full framebuffer)
 thermistor therm1(thermistor_pin, 1); // Analog Pin which is connected to the 3950 temperature sensor
-RotaryEncoder encoder(encoder_clk_pin, encoder_dt_pin, RotaryEncoder::LatchMode::FOUR3);
-RotaryEncoder encoder2(encoder_clk_pin, encoder_dt_pin, RotaryEncoder::LatchMode::FOUR3);
+RotaryEncoder encoder1(encoder_clk_pin, encoder_dt_pin, RotaryEncoder::LatchMode::FOUR3); // Temperature encoder
+RotaryEncoder encoder2(encoder_clk_pin, encoder_dt_pin, RotaryEncoder::LatchMode::FOUR3); // Time encoder
 
 int target_temp = default_temp;
 int time_countdown = default_time;
@@ -56,6 +63,7 @@ static void buttonHandler(uint8_t btnId, uint8_t btnState)
 #if DEBUG
     Serial.print(F("Menu: "));
     Serial.println(menu_positon);
+    Serial.println("");
 #endif
   }
 }
@@ -86,7 +94,7 @@ void setup(void)
   // pinMode(reed_contact_pin, INPUT_PULLUP);
   pinMode(reed_contact_pin, INPUT);
 
-  encoder.setPosition(default_temp);
+  encoder1.setPosition(default_temp);
   encoder2.setPosition(default_time);
 }
 
@@ -99,7 +107,7 @@ static void pollButtons()
 void loop(void)
 {
   if (menu_positon == 2) {
-    encoder.tick();
+    encoder1.tick();
   }
 
   if (menu_positon == 3) {
@@ -232,13 +240,13 @@ void loop(void)
   // Rotary Encoder menu - temperature setting
   if (menu_positon == 2) {
     // get the current physical position and calc the logical position
-    int newPos = encoder.getPosition() * rotary_steps;
+    int newPos = encoder1.getPosition() * rotary_steps;
 
     if (newPos < min_temp) {
-      encoder.setPosition(min_temp / rotary_steps);
+      encoder1.setPosition(min_temp / rotary_steps);
       newPos = min_temp;
     } else if (newPos > max_temp) {
-      encoder.setPosition(max_temp / rotary_steps);
+      encoder1.setPosition(max_temp / rotary_steps);
       newPos = max_temp;
     }
 
