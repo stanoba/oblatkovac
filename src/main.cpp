@@ -6,35 +6,39 @@
 #include <debounce.h>
 #include "pins.h"
 
+// ############################  Static Variables  #############################
+
+const double hysteresis = 0.5;
+const int default_temp = 134; // 134
+const int min_temp = 100; // 100
+const int max_temp = 160;
+const int default_time = 30;
+const int min_time = 10;
+const int max_time = 90;
+#define DEBUG 0 // Set to 1 to enable debug output via Serial
+
 // ###############################  Definitions  ###############################
 
 U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE, i2c_scl_pin, i2c_sda_pin); // U8G2_SH1106_128X64_NONAME_F_HW_I2C(rotation, [reset [, clk, data]])
 thermistor therm1(thermistor_pin,1);  // Analog Pin which is connected to the 3950 temperature sensor, and 0 represents TEMP_SENSOR_0 (see configuration.h for more information).
-int default_temp = 130; // 120
+RotaryEncoder encoder(encoder_clk_pin, encoder_dt_pin, RotaryEncoder::LatchMode::FOUR3);
+RotaryEncoder encoder2(encoder_clk_pin, encoder_dt_pin, RotaryEncoder::LatchMode::FOUR3);
+
 int target_temp = default_temp;
-int hysteresis = 1;
-int min_temp = 90; // 50
-int max_temp = 190;
-double temp = 0;
-int default_time = 30;
-int set_time = default_time;
 int time_countdown = default_time;
+int set_time = default_time;
+double temp = 0;
 boolean heat_on = 1;
+int rotary_steps = 1;
 unsigned long previousTime = 0;
 const unsigned long timeout = 500; //1000; // 1s in ms, update interval
 boolean tick = 0;
+boolean target_reached_once = 0; // Track whether we've already signaled reaching the target temperature
+boolean buzzer_active = 0; // Buzzer one-shot active flag and expiry time (ms)
+unsigned long buzzer_off_time = 0;
 int menu_positon = 1;
-RotaryEncoder encoder(encoder_clk_pin, encoder_dt_pin, RotaryEncoder::LatchMode::FOUR3);
-RotaryEncoder encoder2(encoder_clk_pin, encoder_dt_pin, RotaryEncoder::LatchMode::FOUR3);
-int lastPos = -1;
+int lastPos1 = -1;
 int lastPos2 = -1;
-#define ROTARYSTEPS 1
-#define ROTARYMIN min_temp
-#define ROTARYMAX max_temp
-#define ROTARYSTEPS2 1
-#define ROTARYMIN2 10
-#define ROTARYMAX2 90
-#define DEBUG 0 // Set to 1 to enable debug output via Serial
 
 // ################################  Functions  ################################
 
@@ -71,7 +75,8 @@ void setup(void) {
   pinMode(relay_pin, OUTPUT);
   pinMode(buzzer_pin, OUTPUT);
   pinMode(encoder_sw_pin, INPUT);
-  pinMode(reed_contact_pin, INPUT_PULLUP);
+  //pinMode(reed_contact_pin, INPUT_PULLUP);
+  pinMode(reed_contact_pin, INPUT);
 
   #if DEBUG
     Serial.begin(9600);
@@ -116,7 +121,7 @@ void loop(void) {
     time_countdown = set_time;
   }else{
 
-    if (time_countdown > 0){
+    if (time_countdown > 0 and target_reached_once == 1){
       unsigned long currentTime = millis();
       static unsigned long lastCountdownTime = 0;
       if (currentTime - lastCountdownTime >= 1000) { // Decrease every second
@@ -127,9 +132,17 @@ void loop(void) {
   }
 
 
-  if (time_countdown == 1){
+  // Expire one-shot buzzer if time elapsed
+  if (buzzer_active && (millis() >= buzzer_off_time)) {
+    buzzer_active = 0;
+  }
+
+  // Buzzer priority: one-shot target-beep overrides countdown beep
+  if (buzzer_active) {
     digitalWrite(buzzer_pin, HIGH);
-  }else{
+  } else if (time_countdown == 1) {
+    digitalWrite(buzzer_pin, HIGH);
+  } else {
     digitalWrite(buzzer_pin, LOW);
   }
 
@@ -182,6 +195,14 @@ void loop(void) {
     heat_on = 1;
   }
 
+  // If target temperature is reached for the first time, beep buzzer for 1 second
+  if (!target_reached_once && (temp >= target_temp)) {
+    target_reached_once = 1;
+    buzzer_active = 1;
+    buzzer_off_time = millis() + 1000; // 1 second
+    digitalWrite(buzzer_pin, HIGH); // immediate start of beep
+  }
+
   u8g2.setCursor(30, 30);
   u8g2.print("Set: ");
 
@@ -221,20 +242,20 @@ if (menu_positon == 3){
 // Rotary Encoder menu - temperature setting
 if (menu_positon == 2){
     // get the current physical position and calc the logical position
-    int newPos = encoder.getPosition() * ROTARYSTEPS;
+    int newPos = encoder.getPosition() * rotary_steps;
 
-    if (newPos < ROTARYMIN) {
-      encoder.setPosition(ROTARYMIN / ROTARYSTEPS);
-      newPos = ROTARYMIN;
+    if (newPos < min_temp) {
+      encoder.setPosition(min_temp / rotary_steps);
+      newPos = min_temp;
 
-    } else if (newPos > ROTARYMAX) {
-      encoder.setPosition(ROTARYMAX / ROTARYSTEPS);
-      newPos = ROTARYMAX;
+    } else if (newPos > max_temp) {
+      encoder.setPosition(max_temp / rotary_steps);
+      newPos = max_temp;
     } // if
 
-    if (lastPos != newPos) {
-      lastPos = newPos;
-      target_temp = lastPos;
+    if (lastPos1 != newPos) {
+      lastPos1 = newPos;
+      target_temp = lastPos1;
     } // if
 }
 
@@ -242,15 +263,15 @@ if (menu_positon == 2){
 // Rotary Encoder menu - time setting
 if (menu_positon == 3){
     // get the current physical position and calc the logical position
-    int newPos2 = encoder2.getPosition() * ROTARYSTEPS2;
+    int newPos2 = encoder2.getPosition() * rotary_steps;
 
-    if (newPos2 < ROTARYMIN2) {
-      encoder2.setPosition(ROTARYMIN2 / ROTARYSTEPS2);
-      newPos2 = ROTARYMIN2;
+    if (newPos2 < min_time) {
+      encoder2.setPosition(min_time / rotary_steps);
+      newPos2 = min_time;
 
-    } else if (newPos2 > ROTARYMAX2) {
-      encoder2.setPosition(ROTARYMAX2 / ROTARYSTEPS2);
-      newPos2 = ROTARYMAX2;
+    } else if (newPos2 > max_time) {
+      encoder2.setPosition(max_time / rotary_steps);
+      newPos2 = max_time;
     } // if
 
     if (lastPos2 != newPos2) {
