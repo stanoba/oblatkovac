@@ -1,5 +1,5 @@
 /*******************************************************************************
- * oblatkovac
+ * Electric Wafer Maker Controller (Oblátkovač)
  * GitHub: https://github.com/stanoba/oblatkovac
  * Date: 2025-12
  * Description: Main firmware — temperature sensing, heater control, UI,

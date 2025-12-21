@@ -33,3 +33,7 @@ See `lib/README` for more details about each bundled library.
 ## License
 
 The project code is provided as-is; each third-party library keeps its original license (see their `LICENSE` files in `lib/`).
+
+## Hardware
+
+PCB design is in [Hardware](./Hardware/) folder.
