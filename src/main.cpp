@@ -243,13 +243,13 @@ void loop(void)
 
       if (run_state == 1) {
         // Turn heater OFF
-        if (temp >= (target_temp + hysteresis) and heat_on == 1) {
+        if (temp >= (target_temp + hysteresis) && heat_on == 1) {
           digitalWrite(relay_pin, LOW);
           heat_on = 0;
         }
 
         // Turn heater ON
-        if (temp <= (target_temp - hysteresis) and run_state == 1) {
+        if (temp <= (target_temp - hysteresis) && run_state == 1) {
           digitalWrite(relay_pin, HIGH);
           heat_on = 1;
         }
@@ -260,11 +260,11 @@ void loop(void)
         time_countdown = set_time;
       }
 
-      if (run_state == 1 and heat_on == 1) {
+      if (run_state == 1 && heat_on == 1) {
         digitalWrite(led_red_pin, HIGH);
         digitalWrite(led_green_pin, LOW);
         digitalWrite(led_blue_pin, LOW);
-      }else if (run_state == 1 and heat_on == 0) {
+      }else if (run_state == 1 && heat_on == 0) {
         digitalWrite(led_red_pin, LOW);
         digitalWrite(led_green_pin, HIGH);
         digitalWrite(led_blue_pin, LOW);
@@ -276,7 +276,7 @@ void loop(void)
 
 
       // If target temperature is reached for the first time, beep buzzer for 1 second
-      if (!target_reached_once && (temp >= target_temp)) {
+      if (!target_reached_once && (temp >= target_temp) && run_state == 1) {
         target_reached_once = 1;
         buzzer_active = 1;
         buzzer_off_time = millis() + 1000; // 1 second
