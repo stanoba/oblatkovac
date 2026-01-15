@@ -49,10 +49,11 @@ unsigned long buzzer_off_time = 0;
 int menu_positon = 1;
 int lastPos1 = -1;
 int lastPos2 = -1;
+int run_state = 0;
 
 // ################################  Functions  ################################
 
-static void buttonHandler(uint8_t btnId, uint8_t btnState)
+static void encoder_button_handler(uint8_t btnId, uint8_t btnState)
 {
   if (btnState == BTN_PRESSED) {
     menu_positon++;
@@ -68,7 +69,26 @@ static void buttonHandler(uint8_t btnId, uint8_t btnState)
   }
 }
 
-static Button myButton(0, buttonHandler);
+static void start_stop_button_handler(uint8_t btnId, uint8_t btnState)
+{
+  if (btnState == BTN_PRESSED) {
+    if (run_state == 0) {
+      run_state = 1;
+    }else{
+      run_state = 0;
+    }
+
+#if DEBUG
+    Serial.println(F("Button start/stop pressed"));
+    Serial.print(F("Run state: "));
+    Serial.println(run_state);
+    Serial.println("");
+#endif
+  }
+}
+
+static Button encoder_button(0, encoder_button_handler);
+static Button start_stop_button(1, start_stop_button_handler);
 
 // ##################################  Setup  ##################################
 void setup(void)
@@ -90,9 +110,14 @@ void setup(void)
 
   pinMode(relay_pin, OUTPUT);
   pinMode(buzzer_pin, OUTPUT);
+  pinMode(led_green_pin, OUTPUT);
+  pinMode(led_red_pin, OUTPUT);
+  pinMode(led_blue_pin, OUTPUT);
   pinMode(encoder_sw_pin, INPUT);
-  // pinMode(reed_contact_pin, INPUT_PULLUP);
   pinMode(reed_contact_pin, INPUT);
+
+  // Indicate startup with blue LED
+  digitalWrite(led_blue_pin, HIGH);
 
   encoder1.setPosition(default_temp);
   encoder2.setPosition(default_time);
@@ -100,7 +125,8 @@ void setup(void)
 
 static void pollButtons()
 {
-  myButton.update(digitalRead(encoder_sw_pin));
+  encoder_button.update(digitalRead(encoder_sw_pin));
+  start_stop_button.update(digitalRead(start_stop_button_pin));
 }
 
 // ##################################  Loop  ##################################
@@ -161,6 +187,32 @@ void loop(void)
     // Draw UI using paged API to avoid allocating a full framebuffer
     u8g2.firstPage();
     do {
+
+      if (temp < 1){
+        heat_on = 0;
+        run_state = 0;
+        digitalWrite(relay_pin, LOW);
+        digitalWrite(led_green_pin, LOW);
+        
+        if (((previousTime / 500) % 2) == 0) {
+          digitalWrite(led_blue_pin, HIGH);
+          digitalWrite(led_red_pin, LOW);
+        }else{
+          digitalWrite(led_blue_pin, LOW);
+          digitalWrite(led_red_pin, HIGH);
+        }
+          
+
+        if (((previousTime / 500) % 2) == 0) {
+          u8g2.setFont(u8g2_font_streamline_interface_essential_circle_triangle_t);
+          u8g2.drawGlyph(55, 25, 0x33);
+        }
+          u8g2.setFont(u8g2_font_neuecraft_tr);
+          u8g2.setCursor(10, 50);
+          u8g2.print(F("No temp sensor!"));
+
+      }else{
+
       // Icony
       // Thermometer
       u8g2.setFont(u8g2_font_streamline_weather_t);
@@ -171,12 +223,12 @@ void loop(void)
       u8g2.drawGlyph(0, 60, 0x36);
 
       // Blinking heater icon when ON
-      if (heat_on == 1) {
-        if (((previousTime / 1000) % 2) == 0) {
-          u8g2.setFont(u8g2_font_streamline_interface_essential_circle_triangle_t);
-          u8g2.drawGlyph(105, 40, 0x33);
-        }
-      }
+      // if (heat_on == 1) {
+      //   if (((previousTime / 1000) % 2) == 0) {
+      //     u8g2.setFont(u8g2_font_streamline_interface_essential_circle_triangle_t);
+      //     u8g2.drawGlyph(105, 40, 0x33);
+      //   }
+      // }
 
       // Font text
       u8g2.setFont(u8g2_font_neuecraft_tr);
@@ -187,17 +239,41 @@ void loop(void)
       u8g2.print(temp, 1);
       u8g2.print(F(" °C"));
 
-      // Turn heater OFF
-      if (temp >= (target_temp + hysteresis)) {
+
+
+      if (run_state == 1) {
+        // Turn heater OFF
+        if (temp >= (target_temp + hysteresis) and heat_on == 1) {
+          digitalWrite(relay_pin, LOW);
+          heat_on = 0;
+        }
+
+        // Turn heater ON
+        if (temp <= (target_temp - hysteresis) and run_state == 1) {
+          digitalWrite(relay_pin, HIGH);
+          heat_on = 1;
+        }
+      }else{
+        // Ensure heater is OFF in stop mode
         digitalWrite(relay_pin, LOW);
         heat_on = 0;
+        time_countdown = set_time;
       }
 
-      // Turn heater ON
-      if (temp <= (target_temp - hysteresis)) {
-        digitalWrite(relay_pin, HIGH);
-        heat_on = 1;
+      if (run_state == 1 and heat_on == 1) {
+        digitalWrite(led_red_pin, HIGH);
+        digitalWrite(led_green_pin, LOW);
+        digitalWrite(led_blue_pin, LOW);
+      }else if (run_state == 1 and heat_on == 0) {
+        digitalWrite(led_red_pin, LOW);
+        digitalWrite(led_green_pin, HIGH);
+        digitalWrite(led_blue_pin, LOW);
+      }else{
+        digitalWrite(led_red_pin, LOW);
+        digitalWrite(led_green_pin, LOW);
+        digitalWrite(led_blue_pin, HIGH);
       }
+
 
       // If target temperature is reached for the first time, beep buzzer for 1 second
       if (!target_reached_once && (temp >= target_temp)) {
@@ -234,6 +310,7 @@ void loop(void)
         u8g2.print(time_countdown);
         u8g2.print(F(" s"));
       }
+     } // end temp==0 check
     } while (u8g2.nextPage());
   }
 
