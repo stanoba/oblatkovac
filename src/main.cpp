@@ -7,6 +7,7 @@
  ******************************************************************************/
 
 #include <Arduino.h>
+#include <EEPROM.h>
 #include <U8g2lib.h>
 #include <Wire.h>
 #include <RotaryEncoder.h>
@@ -19,8 +20,8 @@
 const double hysteresis = 0.5;
 const int default_temp = 134; // 134
 const int min_temp = 100; // 100
-const int max_temp = 160;
-const int default_time = 30;
+const int max_temp = 160; // 160
+const int default_time = 30; // 30
 const int min_time = 10;
 const int max_time = 90;
 #define DEBUG 0 // Set to 1 to enable debug output via Serial
@@ -34,9 +35,9 @@ thermistor therm1(thermistor_pin, 1); // Analog Pin which is connected to the 39
 RotaryEncoder encoder1(encoder_clk_pin, encoder_dt_pin, RotaryEncoder::LatchMode::FOUR3); // Temperature encoder
 RotaryEncoder encoder2(encoder_clk_pin, encoder_dt_pin, RotaryEncoder::LatchMode::FOUR3); // Time encoder
 
-int target_temp = default_temp;
-int time_countdown = default_time;
-int set_time = default_time;
+int target_temp = 0;
+int time_countdown = 0;
+int set_time = 0;
 double temp = 0;
 boolean heat_on = 1;
 int rotary_steps = 1;
@@ -59,6 +60,13 @@ static void encoder_button_handler(uint8_t btnId, uint8_t btnState)
     menu_positon++;
     if (menu_positon > 3) {
       menu_positon = 1;
+
+      // Save settings values to EEPROM
+      EEPROM.update(0, target_temp);
+      EEPROM.update(1, set_time);
+
+      Serial.println(F("Save settings values to EEPROM"));
+      Serial.println("");
     }
 
 #if DEBUG
@@ -99,6 +107,37 @@ void setup(void)
   Serial.println("");
 #endif
 
+// EEPROM read settings
+if (EEPROM.read(0) < min_temp || EEPROM.read(0) > max_temp) {
+  target_temp = default_temp;
+  #if DEBUG
+    Serial.println(F("EEPROM temp address is empty"));
+  #endif
+} else {
+  target_temp = EEPROM.read(0);
+  #if DEBUG
+    Serial.print(F("EEPROM temp value: "));
+    Serial.println(target_temp);
+    Serial.println("");
+  #endif
+}
+
+if (EEPROM.read(1) < min_time || EEPROM.read(1) > max_time) { 
+  set_time = default_time;
+  time_countdown = set_time;
+  #if DEBUG
+    Serial.println(F("EEPROM time address is empty"));
+  #endif
+} else {
+  set_time = EEPROM.read(1);
+  time_countdown = set_time;
+  #if DEBUG
+    Serial.print(F("EEPROM time value: "));
+    Serial.println(set_time);
+    Serial.println("");
+  #endif
+}
+
   u8g2.begin(); // initialize the display
 
   // Initialize I2C/Wire with platform-specific pins when available.
@@ -119,8 +158,8 @@ void setup(void)
   // Indicate startup with blue LED
   digitalWrite(led_blue_pin, HIGH);
 
-  encoder1.setPosition(default_temp);
-  encoder2.setPosition(default_time);
+  encoder1.setPosition(target_temp);
+  encoder2.setPosition(set_time);
 }
 
 static void pollButtons()
