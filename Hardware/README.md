@@ -28,12 +28,10 @@ Eagle libraries Downloaded from:
 
 <img src="img/pcb_top.jpg" width="600">
 
-Front side:
-
+Front side:</br>
 <img src="img/pcb_front.jpg" width="600">
 
-Back side:
-
+Back side:</br>
 <img src="img/pcb_back.jpg" width="600">
 
 
