@@ -1,0 +1,6 @@
+# Libraries
+
+- debounce 0.2.1 - https://github.com/kimballa/button-debounce.git
+- RotaryEncoder 1.5.3 - http://www.mathertel.de/Arduino/RotaryEncoderLibrary.aspx
+- ThermistorLibrary 1.0.6 - https://github.com/miguel5612/Arduino-ThermistorLibrary
+- U8g2 2.35.30 - https://github.com/olikraus/u8g2

@@ -19444,10 +19444,10 @@ Source: www.epcos.com .. 01430148.pdf</description>
 <wire x1="38" y1="0" x2="38" y2="23" width="0.127" layer="21"/>
 <wire x1="38" y1="23" x2="0" y2="23" width="0.127" layer="21"/>
 <wire x1="0" y1="23" x2="0" y2="0" width="0.127" layer="21"/>
-<pad name="P$1" x="2.2" y="8.5" drill="0.6"/>
-<pad name="P$2" x="2.2" y="14.5" drill="0.6"/>
-<pad name="+VO" x="35.8" y="2.5" drill="0.6"/>
-<pad name="-VO" x="35.8" y="20.5" drill="0.6"/>
+<pad name="P$1" x="2.2" y="8.5" drill="0.8128"/>
+<pad name="P$2" x="2.2" y="14.5" drill="0.8128"/>
+<pad name="+VO" x="35.8" y="2.5" drill="0.8128"/>
+<pad name="-VO" x="35.8" y="20.5" drill="0.8128"/>
 </package>
 <package name="FIDUCIAL">
 <circle x="0" y="0" radius="0.2" width="0.6096" layer="1"/>
@@ -23382,13 +23382,9 @@ DIN A4, landscape with location and doc. field</description>
 <part name="GND12" library="supply1" library_urn="urn:adsk.eagle:library:371" deviceset="GND" device=""/>
 <part name="P+9" library="supply1" library_urn="urn:adsk.eagle:library:371" deviceset="+5V" device=""/>
 <part name="C4" library="rcl" library_urn="urn:adsk.eagle:library:334" deviceset="C-EU" device="050-024X044" package3d_urn="urn:adsk.eagle:package:23643/1" value="100nF"/>
-<part name="LED1" library="Rembrandt Electronics - JST XH Connectors v1-0" deviceset="JST-XH-02-PIN" device="-LONG-PAD" value="CN9"/>
-<part name="LED2" library="Rembrandt Electronics - JST XH Connectors v1-0" deviceset="JST-XH-02-PIN" device="-LONG-PAD" value="CN8"/>
-<part name="GND13" library="supply1" library_urn="urn:adsk.eagle:library:371" deviceset="GND" device=""/>
-<part name="R9" library="rcl" library_urn="urn:adsk.eagle:library:334" deviceset="R-EU_" device="0207/10" package3d_urn="urn:adsk.eagle:package:23491/2" value="150"/>
+<part name="R9" library="rcl" library_urn="urn:adsk.eagle:library:334" deviceset="R-EU_" device="0207/10" package3d_urn="urn:adsk.eagle:package:23491/2" value="10k"/>
 <part name="P+10" library="supply1" library_urn="urn:adsk.eagle:library:371" deviceset="+5V" device=""/>
-<part name="R10" library="rcl" library_urn="urn:adsk.eagle:library:334" deviceset="R-EU_" device="0207/10" package3d_urn="urn:adsk.eagle:package:23491/2" value="150"/>
-<part name="GND14" library="supply1" library_urn="urn:adsk.eagle:library:371" deviceset="GND" device=""/>
+<part name="R10" library="rcl" library_urn="urn:adsk.eagle:library:334" deviceset="R-EU_" device="0207/10" package3d_urn="urn:adsk.eagle:package:23491/2" value="4k7"/>
 <part name="OLED_PIN2" library="jumper" library_urn="urn:adsk.eagle:library:252" deviceset="SJ2W" device="" package3d_urn="urn:adsk.eagle:package:15474/1"/>
 <part name="OLED_PIN1" library="jumper" library_urn="urn:adsk.eagle:library:252" deviceset="SJ2W" device="" package3d_urn="urn:adsk.eagle:package:15474/1"/>
 <part name="GND15" library="supply1" library_urn="urn:adsk.eagle:library:371" deviceset="GND" device=""/>
@@ -23399,7 +23395,7 @@ DIN A4, landscape with location and doc. field</description>
 <part name="FRAME1" library="frames" library_urn="urn:adsk.eagle:library:229" deviceset="A4L-LOC" device=""/>
 <part name="RGB_LED" library="Rembrandt Electronics - JST XH Connectors v1-0" deviceset="JST-XH-04-PIN" device="-LONG-PAD" value="CN7"/>
 <part name="GND18" library="supply1" library_urn="urn:adsk.eagle:library:371" deviceset="GND" device=""/>
-<part name="R11" library="rcl" library_urn="urn:adsk.eagle:library:334" deviceset="R-EU_" device="0207/10" package3d_urn="urn:adsk.eagle:package:23491/2" value="150"/>
+<part name="R11" library="rcl" library_urn="urn:adsk.eagle:library:334" deviceset="R-EU_" device="0207/10" package3d_urn="urn:adsk.eagle:package:23491/2" value="4k7"/>
 <part name="GREEN_LED" library="jumper" library_urn="urn:adsk.eagle:library:252" deviceset="SJ2W" device="" package3d_urn="urn:adsk.eagle:package:15474/1"/>
 <part name="GND19" library="supply1" library_urn="urn:adsk.eagle:library:371" deviceset="GND" device=""/>
 <part name="P+13" library="supply1" library_urn="urn:adsk.eagle:library:371" deviceset="+5V" device=""/>
@@ -23629,23 +23625,6 @@ DIN A4, landscape with location and doc. field</description>
 <attribute name="NAME" x="117.602" y="23.241" size="1.778" layer="95"/>
 <attribute name="VALUE" x="120.65" y="28.067" size="1.778" layer="96" rot="R180"/>
 </instance>
-<instance part="LED1" gate="-2" x="30.48" y="88.9" smashed="yes" rot="R180">
-<attribute name="NAME" x="27.94" y="89.662" size="1.524" layer="95" rot="R180"/>
-</instance>
-<instance part="LED1" gate="-1" x="30.48" y="91.44" smashed="yes" rot="R180">
-<attribute name="NAME" x="27.94" y="92.202" size="1.524" layer="95" rot="R180"/>
-<attribute name="VALUE" x="31.242" y="95.123" size="1.778" layer="96" rot="R180"/>
-</instance>
-<instance part="LED2" gate="-2" x="30.48" y="45.72" smashed="yes" rot="R180">
-<attribute name="NAME" x="27.94" y="46.482" size="1.524" layer="95" rot="R180"/>
-</instance>
-<instance part="LED2" gate="-1" x="30.48" y="48.26" smashed="yes" rot="R180">
-<attribute name="NAME" x="27.94" y="49.022" size="1.524" layer="95" rot="R180"/>
-<attribute name="VALUE" x="31.242" y="51.943" size="1.778" layer="96" rot="R180"/>
-</instance>
-<instance part="GND13" gate="1" x="33.02" y="43.18" smashed="yes">
-<attribute name="VALUE" x="30.48" y="40.64" size="1.778" layer="96"/>
-</instance>
 <instance part="R9" gate="G$1" x="43.18" y="48.26" smashed="yes">
 <attribute name="NAME" x="44.45" y="51.8414" size="1.778" layer="95" rot="R180"/>
 <attribute name="VALUE" x="41.91" y="44.958" size="1.778" layer="96"/>
@@ -23656,9 +23635,6 @@ DIN A4, landscape with location and doc. field</description>
 <instance part="R10" gate="G$1" x="45.72" y="91.44" smashed="yes" rot="R180">
 <attribute name="NAME" x="49.53" y="89.9414" size="1.778" layer="95" rot="R180"/>
 <attribute name="VALUE" x="49.53" y="94.742" size="1.778" layer="96" rot="R180"/>
-</instance>
-<instance part="GND14" gate="1" x="33.02" y="86.36" smashed="yes">
-<attribute name="VALUE" x="30.48" y="83.82" size="1.778" layer="96"/>
 </instance>
 <instance part="OLED_PIN2" gate="G$1" x="218.44" y="121.92" smashed="yes">
 <attribute name="NAME" x="220.98" y="119.761" size="1.778" layer="95"/>
@@ -24061,25 +24037,19 @@ DIN A4, landscape with location and doc. field</description>
 </net>
 <net name="N$5" class="0">
 <segment>
-<pinref part="LED2" gate="-1" pin="S"/>
 <pinref part="R9" gate="G$1" pin="1"/>
-<wire x1="38.1" y1="48.26" x2="33.02" y2="48.26" width="0.1524" layer="91"/>
 <pinref part="RGB_LED" gate="-2" pin="S"/>
 <wire x1="33.02" y1="71.12" x2="38.1" y2="71.12" width="0.1524" layer="91"/>
 <wire x1="38.1" y1="71.12" x2="38.1" y2="48.26" width="0.1524" layer="91"/>
-<junction x="38.1" y="48.26"/>
 </segment>
 </net>
 <net name="N$6" class="0">
 <segment>
-<pinref part="LED1" gate="-1" pin="S"/>
 <pinref part="R10" gate="G$1" pin="2"/>
 <wire x1="40.64" y1="91.44" x2="38.1" y2="91.44" width="0.1524" layer="91"/>
 <pinref part="RGB_LED" gate="-4" pin="S"/>
-<wire x1="38.1" y1="91.44" x2="33.02" y2="91.44" width="0.1524" layer="91"/>
 <wire x1="33.02" y1="76.2" x2="38.1" y2="76.2" width="0.1524" layer="91"/>
 <wire x1="38.1" y1="76.2" x2="38.1" y2="91.44" width="0.1524" layer="91"/>
-<junction x="38.1" y="91.44"/>
 </segment>
 </net>
 <net name="OLED_PIN1" class="0">
@@ -24229,14 +24199,6 @@ DIN A4, landscape with location and doc. field</description>
 <pinref part="ENCODER" gate="-1" pin="S"/>
 <pinref part="GND12" gate="1" pin="GND"/>
 <wire x1="33.02" y1="106.68" x2="35.56" y2="106.68" width="0.1524" layer="91"/>
-</segment>
-<segment>
-<pinref part="LED2" gate="-2" pin="S"/>
-<pinref part="GND13" gate="1" pin="GND"/>
-</segment>
-<segment>
-<pinref part="LED1" gate="-2" pin="S"/>
-<pinref part="GND14" gate="1" pin="GND"/>
 </segment>
 <segment>
 <pinref part="OLED_PIN2" gate="G$1" pin="3"/>
