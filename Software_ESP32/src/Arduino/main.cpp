@@ -45,6 +45,9 @@ static uint32_t displayCount = 0;
 static uint32_t displayRemaining = 0;
 static uint32_t displayOvertime = 0;
 static uint8_t displayMode = 0;
+static bool timerBeepActive = false;
+static uint32_t timerBeepOffAt = 0;
+static bool targetReachedBeeped = false;
 static uint8_t encoderState = 0;
 static int8_t encoderSteps = 0;
 static bool encoderButtonStable = HIGH;
@@ -52,7 +55,8 @@ static bool encoderButtonRaw = HIGH;
 static uint32_t encoderButtonChangedAt = 0;
 static uint32_t lastDisplay = 0;
 static bool displayNeedsUpdate = true;
-static const int8_t encoderTable[16] = {0,-1,1,0,1,0,0,-1,-1,0,0,1,0,1,-1,0};
+// Reversed from the previous mapping so clockwise rotation increases values.
+static const int8_t encoderTable[16] = {0,1,-1,0,-1,0,0,1,1,0,0,-1,0,-1,1,0};
 
 // Encoder edit mode: 0 = idle, 1 = edit temperature, 2 = edit time
 static uint8_t encoderEditMode = 0;
@@ -113,13 +117,24 @@ static void sendAck(const char *seq, bool accepted) {
 
 static void sendTelemetry() {
   char out[bridge::kMaxLineLength];
-  snprintf(out, sizeof(out), "IO,%lu,%.1f,%u,%u,%u,%u,%lu,%u,%d,%d",
+  // AVR printf does not enable floating-point formatting by default; %.1f
+  // becomes '?' on Nano. Encode tenths as integers and format the decimal
+  // point ourselves so the existing ESP32 protocol/parser stays unchanged.
+  int tempTenths = -10;
+  if (!isnan(temperatureC) && !faultSensor) {
+    tempTenths = (int)(temperatureC * 10.0f + (temperatureC >= 0.0f ? 0.5f : -0.5f));
+  }
+  int tempWhole = tempTenths / 10;
+  int tempFraction = tempTenths % 10;
+  if (tempFraction < 0) tempFraction = -tempFraction;
+  snprintf(out, sizeof(out), "IO,%lu,%d.%d,%u,%u,%u,%u,%lu,%u,%d,%d",
     (unsigned long)++txSeq,
-    isnan(temperatureC) || faultSensor ? -1.0f : temperatureC,
+    tempWhole,
+    tempFraction,
     lidClosed ? 1 : 0,
     heaterOn ? 1 : 0,
     faultSensor ? 1 : 0,
-    0,
+    encoderEditMode,
     (unsigned long)lidOpenSeconds,
     linkUp ? 1 : 0,
     targetC,
@@ -139,11 +154,13 @@ static void flushPendingEvents() {
   }
   // pendingMode is now handled locally on Nano (encoder edit mode cycles 0->1->2->0)
   pendingMode = false;
-  // Only send accumulated encoder steps when back in idle mode (not while still editing)
+  // Sync the final absolute values so the ESP32 does not have to infer which
+  // setting an encoder delta belongs to.
   if (encoderEditMode == 0 && pendingEncSteps != 0) {
-    char buf[8];
-    snprintf(buf, sizeof(buf), "%d", (int)pendingEncSteps);
-    sendEvent("ENC", buf);
+    char payload[48];
+    snprintf(payload, sizeof(payload), "EV,%lu,SET,%d,%d",
+      (unsigned long)++txSeq, targetC, durationS);
+    sendFrame(payload);
     pendingEncSteps = 0;
   }
 }
@@ -187,6 +204,24 @@ static void handleFrame(char *line) {
       return;
     }
   }
+  // An explicit settings save from the web UI overrides any in-progress local
+  // encoder edit and discards its queued update.
+  if (strcmp(cmd, "SET") == 0) {
+    char *t = strtok_r(nullptr, ",", &save);
+    char *d = strtok_r(nullptr, ",", &save);
+    int newTarget = t ? atoi(t) : -1;
+    int newDuration = d ? atoi(d) : -1;
+    if (newTarget < min_temp || newTarget > max_temp || newDuration < min_time || newDuration > max_time) {
+      rejectCommand(seq, "value_out_of_range", cmd); return;
+    }
+    lastCommandSeq = incomingSeq; haveCommandSeq = true; lastHeartbeat = millis(); linkUp = true;
+    targetC = newTarget; durationS = newDuration;
+    encoderEditMode = 0; pendingEncSteps = 0;
+    Serial.print(F("[Nano] Accepted web settings seq=")); Serial.print(incomingSeq);
+    Serial.print(F(" target=")); Serial.print(targetC); Serial.print(F(" time=")); Serial.println(durationS);
+    sendAck(seq, true); flushPendingEvents(); sendTelemetry(); displayNeedsUpdate = true;
+    return;
+  }
   if (strcmp(cmd, "STATE") != 0) { rejectCommand(seq, "unknown_command", cmd); return; }
   char *t = strtok_r(nullptr, ",", &save);
   char *d = strtok_r(nullptr, ",", &save);
@@ -203,18 +238,28 @@ static void handleFrame(char *line) {
     rejectCommand(seq, "value_out_of_range"); return;
   }
   lastCommandSeq = incomingSeq; haveCommandSeq = true; lastHeartbeat = millis(); linkUp = true;
+#if WAFFLE_DEBUG
   Serial.print(F("[Nano] Accepted STATE seq=")); Serial.println(incomingSeq);
+#endif
   // Only overwrite target/duration from ESP32 when encoder is idle (not while user is editing)
-  if (encoderEditMode == 0) {
+  if (encoderEditMode == 0 && pendingEncSteps == 0) {
     targetC = newTarget; durationS = newDuration;
   }
   bool requested = atoi(run) != 0;
   if (!requested) runInterlockLatch = false;
   runRequested = requested && !runInterlockLatch;
+  if (!runRequested) targetReachedBeeped = false;
   displayCount = strtoul(count, nullptr, 10);
   displayRemaining = strtoul(remaining, nullptr, 10);
   displayOvertime = strtoul(overtime, nullptr, 10);
+  uint8_t previousDisplayMode = displayMode;
   displayMode = (uint8_t)atoi(mode);
+  if (displayMode == 2 && previousDisplayMode != 2) {
+    timerBeepActive = true;
+    timerBeepOffAt = millis() + WAFFLE_BUZZER_BEEP_MS;
+    digitalWrite(buzzer_pin, HIGH);
+    Serial.println(F("[Nano] Bake timer elapsed; buzzer ON"));
+  }
 
   // Synchronous response: ACK -> pending events -> IO telemetry
   sendAck(seq, true);
@@ -229,7 +274,9 @@ static void pollSerial() {
     if (c == '\n' || c == '\r') {
       if (rxLen) {
         rxLine[rxLen] = 0;
+#if WAFFLE_DEBUG
         Serial.print(F("[Nano RX] ")); Serial.println(rxLine);
+#endif
         handleFrame(rxLine);
         rxLen = 0;
       }
@@ -247,6 +294,7 @@ static void pollEncoder(uint32_t now) {
   encoderSteps += encoderTable[(encoderState << 2) | next];
   encoderState = next;
   if (encoderSteps >= 4) {
+    if (encoderEditMode != 0) encoderIdleMs = now;
     if (encoderEditMode == 1) {
       // Edit temperature locally; send delta to ESP32
       targetC = constrain(targetC + 1, min_temp, max_temp);
@@ -259,6 +307,7 @@ static void pollEncoder(uint32_t now) {
     }
     encoderSteps = 0;
   } else if (encoderSteps <= -4) {
+    if (encoderEditMode != 0) encoderIdleMs = now;
     if (encoderEditMode == 1) {
       targetC = constrain(targetC - 1, min_temp, max_temp);
       pendingEncSteps -= 1;
@@ -273,7 +322,7 @@ static void pollEncoder(uint32_t now) {
 
   bool raw = digitalRead(encoder_sw_pin);
   if (raw != encoderButtonRaw) { encoderButtonRaw = raw; encoderButtonChangedAt = now; }
-  if (now - encoderButtonChangedAt >= 30 && raw != encoderButtonStable) {
+  if (now - encoderButtonChangedAt >= 50 && raw != encoderButtonStable) {
     encoderButtonStable = raw;
     if (encoderButtonStable == LOW) {
       // Cycle: 0 (idle) -> 1 (temp) -> 2 (time) -> 0 (idle)
@@ -286,7 +335,7 @@ static void pollEncoder(uint32_t now) {
   }
 
   // Auto-return to idle after 5 seconds of no button press
-  if (encoderEditMode != 0 && now - encoderIdleMs >= 5000) {
+  if (encoderEditMode != 0 && now - encoderIdleMs >= WAFFLE_ENCODER_EDIT_TIMEOUT_MS) {
     encoderEditMode = 0;
     displayNeedsUpdate = true;
   }
@@ -341,7 +390,7 @@ void setup() {
   Serial.print(F("[Nano] Firmware v")); Serial.print(FIRMWARE_VERSION); Serial.print(' '); Serial.print(FIRMWARE_BUILD_DATE); Serial.print(' '); Serial.println(FIRMWARE_BUILD_TIME);
   pinMode(relay_pin, OUTPUT); pinMode(buzzer_pin, OUTPUT);
   pinMode(led_green_pin, OUTPUT); pinMode(led_red_pin, OUTPUT); pinMode(led_blue_pin, OUTPUT);
-  pinMode(encoder_sw_pin, INPUT); pinMode(start_stop_button_pin, INPUT);
+  pinMode(encoder_sw_pin, INPUT_PULLUP); pinMode(start_stop_button_pin, INPUT);
   pinMode(encoder_dt_pin, INPUT); pinMode(encoder_clk_pin, INPUT);
   pinMode(reed_contact_pin, INPUT);
   digitalWrite(relay_pin, LOW); digitalWrite(buzzer_pin, LOW);
@@ -363,6 +412,12 @@ void loop() {
   pollSerial();
   const uint32_t now=millis();
   pollEncoder(now);
+
+  if (timerBeepActive && (int32_t)(now - timerBeepOffAt) >= 0) {
+    timerBeepActive = false;
+    digitalWrite(buzzer_pin, LOW);
+    Serial.println(F("[Nano] Timer buzzer OFF"));
+  }
 
   // The existing PCB uses LOW for the open/reset state and HIGH for closed.
   bool rawClosed = digitalRead(reed_contact_pin) == HIGH;
@@ -402,6 +457,14 @@ void loop() {
     lastSample=now;
     temperatureC=therm1.analog2temp();
     faultSensor = isnan(temperatureC) || temperatureC < 1.0f || temperatureC > 250.0f;
+    if (!runRequested) targetReachedBeeped = false;
+    else if (!targetReachedBeeped && !faultSensor && temperatureC >= targetC) {
+      targetReachedBeeped = true;
+      timerBeepActive = true;
+      timerBeepOffAt = now + WAFFLE_BUZZER_BEEP_MS;
+      digitalWrite(buzzer_pin, HIGH);
+      Serial.println(F("[Nano] Target temperature reached; buzzer ON"));
+    }
     if (!linkUp || faultSensor || !runRequested) heaterOn=false;
     else if (temperatureC >= targetC + hysteresis) heaterOn=false;
     else if (temperatureC <= targetC - hysteresis) heaterOn=true;

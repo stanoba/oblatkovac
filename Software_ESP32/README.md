@@ -17,6 +17,31 @@ firmware remains unchanged while the new design is developed here.
   ESP32 UART heartbeat. While ESP32 is disconnected, button presses are
   stop-only and cannot start heating.
 
+The Nano buzzer emits a 1-second beep the first time the measured temperature
+reaches the setpoint during a run, and another 1-second beep when the bake
+timer expires. The target-reached beep rearms after STOP.
+
+Opening the lid does not reject START or directly interlock the heater. The lid
+sensor still drives the dashboard, opening-duration statistics, and bake
+lifecycle: the countdown starts only with the lid closed, and opening during a
+countdown resets it; opening after expiry completes the bake.
+
+## Shared configuration and diagnostics
+
+The shared_config.h header is included by both firmware targets. It contains
+the default, minimum, and maximum temperature/time values, encoder edit
+timeout, buzzer pulse duration, and WAFFLE_DEBUG. Current settings are 134 °C
+default (100–180 °C) and 30 seconds default (10–90 seconds). Encoder edit mode
+exits after 10 seconds without input.
+
+Set WAFFLE_DEBUG to 1 to print each UART frame sent and received and each
+accepted Nano STATE command. At 0, frame-level traces are suppressed; boot,
+status, action, and error messages remain visible on USB serial at 115200 baud.
+
+USB uploads for the ESP32-C3 are configured for the native USB reset sequence
+before flashing and a watchdog reset afterward. PlatformIO uses esptool 4.9.0
+to support that reset option.
+
 ## Persistent data
 
 - ESP32 NVS stores Wi-Fi credentials, set temperature/time, and the optional UI
