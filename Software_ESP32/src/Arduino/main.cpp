@@ -54,6 +54,12 @@ static uint32_t lastDisplay = 0;
 static bool displayNeedsUpdate = true;
 static const int8_t encoderTable[16] = {0,-1,1,0,1,0,0,-1,-1,0,0,1,0,1,-1,0};
 
+// Encoder edit mode: 0 = idle, 1 = edit temperature, 2 = edit time
+static uint8_t encoderEditMode = 0;
+static uint32_t encoderIdleMs = 0;   // millis() when encoderEditMode was last changed
+static bool blinkState = false;
+static uint32_t lastBlinkMs = 0;
+
 // Synchronized event queue: events are sent immediately following command reception
 // to avoid bus contention on half-duplex SoftwareSerial.
 static int8_t pendingEncSteps = 0;
@@ -109,7 +115,7 @@ static void sendTelemetry() {
   char out[bridge::kMaxLineLength];
   snprintf(out, sizeof(out), "IO,%lu,%.1f,%u,%u,%u,%u,%lu,%u,%d,%d",
     (unsigned long)++txSeq,
-    isnan(temperatureC) ? -1.0 : temperatureC,
+    isnan(temperatureC) || faultSensor ? -1.0f : temperatureC,
     lidClosed ? 1 : 0,
     heaterOn ? 1 : 0,
     faultSensor ? 1 : 0,
@@ -131,11 +137,10 @@ static void flushPendingEvents() {
     sendEvent("START");
     pendingStart = false;
   }
-  if (pendingMode) {
-    sendEvent("MODE");
-    pendingMode = false;
-  }
-  if (pendingEncSteps != 0) {
+  // pendingMode is now handled locally on Nano (encoder edit mode cycles 0->1->2->0)
+  pendingMode = false;
+  // Only send accumulated encoder steps when back in idle mode (not while still editing)
+  if (encoderEditMode == 0 && pendingEncSteps != 0) {
     char buf[8];
     snprintf(buf, sizeof(buf), "%d", (int)pendingEncSteps);
     sendEvent("ENC", buf);
@@ -199,7 +204,10 @@ static void handleFrame(char *line) {
   }
   lastCommandSeq = incomingSeq; haveCommandSeq = true; lastHeartbeat = millis(); linkUp = true;
   Serial.print(F("[Nano] Accepted STATE seq=")); Serial.println(incomingSeq);
-  targetC = newTarget; durationS = newDuration;
+  // Only overwrite target/duration from ESP32 when encoder is idle (not while user is editing)
+  if (encoderEditMode == 0) {
+    targetC = newTarget; durationS = newDuration;
+  }
   bool requested = atoi(run) != 0;
   if (!requested) runInterlockLatch = false;
   runRequested = requested && !runInterlockLatch;
@@ -238,14 +246,56 @@ static void pollEncoder(uint32_t now) {
   uint8_t next = (digitalRead(encoder_clk_pin) ? 2 : 0) | (digitalRead(encoder_dt_pin) ? 1 : 0);
   encoderSteps += encoderTable[(encoderState << 2) | next];
   encoderState = next;
-  if (encoderSteps >= 4) { pendingEncSteps += 1; encoderSteps = 0; }
-  else if (encoderSteps <= -4) { pendingEncSteps -= 1; encoderSteps = 0; }
+  if (encoderSteps >= 4) {
+    if (encoderEditMode == 1) {
+      // Edit temperature locally; send delta to ESP32
+      targetC = constrain(targetC + 1, min_temp, max_temp);
+      pendingEncSteps += 1;
+      displayNeedsUpdate = true;
+    } else if (encoderEditMode == 2) {
+      durationS = constrain(durationS + 1, min_time, max_time);
+      pendingEncSteps += 1;
+      displayNeedsUpdate = true;
+    }
+    encoderSteps = 0;
+  } else if (encoderSteps <= -4) {
+    if (encoderEditMode == 1) {
+      targetC = constrain(targetC - 1, min_temp, max_temp);
+      pendingEncSteps -= 1;
+      displayNeedsUpdate = true;
+    } else if (encoderEditMode == 2) {
+      durationS = constrain(durationS - 1, min_time, max_time);
+      pendingEncSteps -= 1;
+      displayNeedsUpdate = true;
+    }
+    encoderSteps = 0;
+  }
 
   bool raw = digitalRead(encoder_sw_pin);
   if (raw != encoderButtonRaw) { encoderButtonRaw = raw; encoderButtonChangedAt = now; }
   if (now - encoderButtonChangedAt >= 30 && raw != encoderButtonStable) {
     encoderButtonStable = raw;
-    if (encoderButtonStable == LOW) pendingMode = true;
+    if (encoderButtonStable == LOW) {
+      // Cycle: 0 (idle) -> 1 (temp) -> 2 (time) -> 0 (idle)
+      encoderEditMode = (encoderEditMode + 1) % 3;
+      encoderIdleMs = now;
+      blinkState = true;
+      lastBlinkMs = now;
+      displayNeedsUpdate = true;
+    }
+  }
+
+  // Auto-return to idle after 5 seconds of no button press
+  if (encoderEditMode != 0 && now - encoderIdleMs >= 5000) {
+    encoderEditMode = 0;
+    displayNeedsUpdate = true;
+  }
+
+  // Blink timer: 500 ms period
+  if (encoderEditMode != 0 && now - lastBlinkMs >= 500) {
+    blinkState = !blinkState;
+    lastBlinkMs = now;
+    displayNeedsUpdate = true;
   }
 }
 
@@ -253,11 +303,34 @@ static void renderDisplay() {
   oled.firstPage(); do {
     oled.setFont(u8g2_font_6x12_tf);
     oled.setCursor(0, 12); oled.print(linkUp ? "ESP online" : "ESP offline - heater OFF");
-    oled.setCursor(0, 27); oled.print("Temp: "); if (isnan(temperatureC)) oled.print("ERR"); else { oled.print(temperatureC,1); oled.print(" C"); }
-    oled.setCursor(0, 42); oled.print("Set: "); oled.print(targetC); oled.print(" C  "); oled.print(heaterOn ? "HEAT ON" : "OFF");
+    oled.setCursor(0, 27); oled.print("Temp: ");
+    if (isnan(temperatureC)) oled.print("ERR");
+    else { oled.print(temperatureC,1); oled.print(" C"); }
+
+    // Line 3: Set temperature - blinks when encoderEditMode == 1
+    oled.setCursor(0, 42);
+    oled.print("Set: ");
+    if (encoderEditMode == 1 && !blinkState) {
+      oled.print("   ");  // blank during blink-off phase
+    } else {
+      oled.print(targetC); oled.print(" C");
+    }
+    oled.print("  "); oled.print(heaterOn ? "HEAT ON" : "OFF");
+
+    // Line 4: Time / countdown - blinks when encoderEditMode == 2
     oled.setCursor(0, 57);
-    if (displayMode == 2) { oled.print("+ "); oled.print(displayOvertime); oled.print(" s"); }
-    else { oled.print("Time: "); oled.print(displayRemaining); oled.print(" s"); }
+    if (displayMode == 2) {
+      oled.print("+ "); oled.print(displayOvertime); oled.print(" s");
+    } else if (displayMode == 1) {
+      oled.print("Time: "); oled.print(displayRemaining); oled.print(" s");
+    } else {
+      oled.print("Set: ");
+      if (encoderEditMode == 2 && !blinkState) {
+        oled.print("   ");  // blank during blink-off phase
+      } else {
+        oled.print(durationS); oled.print(" s");
+      }
+    }
     oled.print("  #"); oled.print(displayCount);
   } while (oled.nextPage());
 }
@@ -362,7 +435,7 @@ void loop() {
   }
 
   // Render display during the safe quiet window after serial frame processing
-  if (displayNeedsUpdate && now-lastDisplay >= 500) {
+  if (displayNeedsUpdate && now-lastDisplay >= 200) {
     lastDisplay=now;
     displayNeedsUpdate=false;
     renderDisplay();
