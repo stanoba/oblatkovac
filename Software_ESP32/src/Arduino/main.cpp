@@ -1,4 +1,4 @@
-#include <Arduino.h>
+﻿#include <Arduino.h>
 #include <SoftwareSerial.h>
 #include <EEPROM.h>
 #include <Wire.h>
@@ -233,9 +233,11 @@ static void handleFrame(char *line) {
   if (!(t && d && run && count && remaining && overtime && mode)) { rejectCommand(seq, "missing_state_field"); return; }
   int newTarget = atoi(t), newDuration = atoi(d);
   if (newTarget < min_temp || newTarget > max_temp || newDuration < min_time || newDuration > max_time) {
-    Serial.print(F("[Nano] Rejected state values: target=")); Serial.print(newTarget);
+    Serial.print(F("[Nano] Warning: state target/time out of range: target=")); Serial.print(newTarget);
     Serial.print(F(" C time=")); Serial.print(newDuration); Serial.println(F(" s"));
-    rejectCommand(seq, "value_out_of_range"); return;
+    lastCommandSeq = incomingSeq; haveCommandSeq = true; lastHeartbeat = millis(); linkUp = true;
+    sendAck(seq, true); flushPendingEvents(); sendTelemetry();
+    return;
   }
   lastCommandSeq = incomingSeq; haveCommandSeq = true; lastHeartbeat = millis(); linkUp = true;
 #if WAFFLE_DEBUG
@@ -280,9 +282,21 @@ static void pollSerial() {
         handleFrame(rxLine);
         rxLen = 0;
       }
-    }
-    else if (rxLen < sizeof(rxLine) - 1) rxLine[rxLen++] = c;
-    else {
+    } else if (rxLen < sizeof(rxLine) - 1) {
+      rxLine[rxLen++] = c;
+      // Auto-flush on *XX — splits concatenated frames that arrive without \n
+      if (rxLen >= 3 &&
+          rxLine[rxLen - 3] == '*' &&
+          isxdigit((unsigned char)rxLine[rxLen - 2]) &&
+          isxdigit((unsigned char)rxLine[rxLen - 1])) {
+        rxLine[rxLen] = 0;
+#if WAFFLE_DEBUG
+        Serial.print(F("[Nano RX] ")); Serial.println(rxLine);
+#endif
+        handleFrame(rxLine);
+        rxLen = 0;
+      }
+    } else {
       Serial.println(F("[Nano RX overflow]"));
       rxLen = 0;
     }
@@ -405,7 +419,7 @@ void setup() {
   encoderButtonStable=encoderButtonRaw=digitalRead(encoder_sw_pin);
   buttonStable=buttonRaw=digitalRead(start_stop_button_pin);
   lastHeartbeat=0;
-  lastFallbackStatus=millis();
+  lastFallbackStatus=millis();lastSample=millis();temperatureC=therm1.analog2temp();faultSensor=isnan(temperatureC)||temperatureC<1.0f||temperatureC>250.0f;displayNeedsUpdate=true;
 }
 
 void loop() {
@@ -457,6 +471,7 @@ void loop() {
     lastSample=now;
     temperatureC=therm1.analog2temp();
     faultSensor = isnan(temperatureC) || temperatureC < 1.0f || temperatureC > 250.0f;
+    displayNeedsUpdate = true;
     if (!runRequested) targetReachedBeeped = false;
     else if (!targetReachedBeeped && !faultSensor && temperatureC >= targetC) {
       targetReachedBeeped = true;
