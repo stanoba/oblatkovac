@@ -10,6 +10,16 @@ The firmware source is in [Software](Software/) folder.
 
 Build with PlatformIO, see `platformio.ini` for board environments.
 
+### ESP32 web interface
+
+The ESP32-C3 firmware serves a responsive Dashboard and a separate Settings page. The dashboard provides live temperature and setpoint, a single state-aware Start/Stop control, bake statistics, and a history chart with actual temperature, setpoint, heater state, and the lid as a digital 0/1 signal. It includes a 15-minute view, a 100-entry activity log held in RAM, and three-column network, appliance, and ESP32 diagnostics. Durations in the web interface are shown in seconds. The page refreshes data over AJAX and supports light, dark, and automatic themes.
+
+Settings includes language selection, DHCP/static IP and device hostname (with a MAC suffix by default), NTP server, timezone, 12/24-hour format, independent Web UI and OTA login switches, restart and reset actions. The firmware exposes `/metrics` for Prometheus and serves the SVG favicon at both `/favicon.svg` and `/favicon.ico`.
+
+The web API uses `GET /api/status`, `/api/history`, and `/api/events` for dashboard data; `/api/events` returns the recent activity log and heater history. State-changing controls use `POST /api/control` with `cmd=RUN` or `cmd=STOP`; bake settings use `POST /api/settings` with `target` and `duration`. Opening `/api/control` in a browser sends GET and returns HTTP 405 because that route changes state only through POST.
+
+From the `Software_ESP32/` directory, build the ESP32-C3 firmware with `pio run -e esp32c3` (or use the OTA environment when uploading over Wi-Fi).
+
 ## Bundled libraries
 
 For reproducible builds this repo includes the following libraries under `Software/lib/`:
