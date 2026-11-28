@@ -45,7 +45,7 @@ to support that reset option.
 ## Persistent data
 
 - ESP32 NVS stores Wi-Fi credentials, set temperature/time, and the optional UI
-  password used by both web authentication and OTA.
+  password used by both web login and OTA.
 - On first startup, if ESP32 NVS has no settings yet, Nano reports the current
   temperature/time values from its existing EEPROM so ESP32 can import them.
   After that, ESP32 NVS is authoritative for these settings.
@@ -91,10 +91,13 @@ named `Oblatkovac-Setup-<last 4 MAC characters>`. It stores Wi-Fi credentials in
 NVS and serves the dashboard over either the saved local Wi-Fi network or its
 own setup network, without cloud or internet access. Physical and web controls
 remain available without a router. The responsive dashboard follows the
-WiFi-to-RS232 visual style and offers dark and light themes. Web authentication is disabled by
-default and can be enabled in settings. OTA always requires the same configured
-password, even while web authentication is disabled; if no password exists, OTA
-is disabled.
+WiFi-to-RS232 visual style and offers dark and light themes. Login is disabled by default. One switch in
+settings requires the password (user `admin`) for the web UI, the API and OTA
+(browser upload and ArduinoOTA); **while it is off, anyone on the network can
+upload firmware**. While login is on, the Settings page can reveal the saved password
+(sent over plain HTTP to signed-in clients only). Browsers sign in on `/login` (sessions last 12 hours and end
+on reboot); scripts can use HTTP Basic authentication. The setup network's
+`/wifi` page stays open for first-time configuration.
 
 The ESP32 web UI and Wi-Fi setup portal default to English. The language
 selector can switch to Slovak; the choice is stored in ESP32 NVS. Translations
